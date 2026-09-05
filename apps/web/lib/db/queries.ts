@@ -240,36 +240,38 @@ export async function createVerificationEvent(
 
 export async function getDashboardStats() {
   const [
-    totalResult,
-    criticalResult,
-    needsReviewResult,
-    verifiedResult,
-    inProgressResult,
-    resolvedResult,
+    statsResult,
     byDisasterResult,
     bySeverityResult,
     byVerificationResult,
     recentCriticalResult,
   ] = await Promise.all([
-    query(`SELECT COUNT(*) as count FROM reports`),
-    query(`SELECT COUNT(*) as count FROM reports WHERE final_severity = 'critical'`),
-    query(`SELECT COUNT(*) as count FROM reports WHERE verification_status = 'needs_review'`),
-    query(`SELECT COUNT(*) as count FROM reports WHERE verification_status = 'verified'`),
-    query(`SELECT COUNT(*) as count FROM reports WHERE operational_status = 'in_progress'`),
-    query(`SELECT COUNT(*) as count FROM reports WHERE operational_status = 'resolved'`),
+    // Optimized: Single query with conditional aggregation instead of 8 separate queries
+    query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE final_severity = 'critical') as critical,
+        COUNT(*) FILTER (WHERE verification_status = 'needs_review') as needs_review,
+        COUNT(*) FILTER (WHERE verification_status = 'verified') as verified,
+        COUNT(*) FILTER (WHERE operational_status = 'in_progress') as in_progress,
+        COUNT(*) FILTER (WHERE operational_status = 'resolved') as resolved
+      FROM reports
+    `),
     query(`SELECT disaster_type, COUNT(*) as count FROM reports GROUP BY disaster_type ORDER BY count DESC`),
     query(`SELECT final_severity, COUNT(*) as count FROM reports GROUP BY final_severity ORDER BY count DESC`),
     query(`SELECT verification_status, COUNT(*) as count FROM reports GROUP BY verification_status ORDER BY count DESC`),
     query(`SELECT * FROM reports WHERE final_severity = 'critical' AND verification_status != 'rejected' ORDER BY submitted_at DESC LIMIT 10`),
   ]);
 
+  const statsRow = statsResult.rows[0];
+
   return {
-    total: parseInt(totalResult.rows[0]?.count ?? "0", 10),
-    critical: parseInt(criticalResult.rows[0]?.count ?? "0", 10),
-    needsReview: parseInt(needsReviewResult.rows[0]?.count ?? "0", 10),
-    verified: parseInt(verifiedResult.rows[0]?.count ?? "0", 10),
-    inProgress: parseInt(inProgressResult.rows[0]?.count ?? "0", 10),
-    resolved: parseInt(resolvedResult.rows[0]?.count ?? "0", 10),
+    total: parseInt(statsRow?.total ?? "0", 10),
+    critical: parseInt(statsRow?.critical ?? "0", 10),
+    needsReview: parseInt(statsRow?.needs_review ?? "0", 10),
+    verified: parseInt(statsRow?.verified ?? "0", 10),
+    inProgress: parseInt(statsRow?.in_progress ?? "0", 10),
+    resolved: parseInt(statsRow?.resolved ?? "0", 10),
     byDisaster: byDisasterResult.rows,
     bySeverity: bySeverityResult.rows,
     byVerification: byVerificationResult.rows,

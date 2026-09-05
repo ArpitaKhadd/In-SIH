@@ -54,17 +54,21 @@ export default async function IncidentDetail({
     notes: e.notes,
   }));
 
-  const mediaWithUrls = media.map((m: any) => ({
-    id: m.id,
-    storage_path: m.storage_path,
-    media_type: m.media_type,
-    is_original: m.is_original,
-    signed_url: !m.is_original && m.storage_path.startsWith("http")
-      ? m.storage_path
-      : !m.is_original
-        ? `/uploads/${m.storage_path.replace(/^\/uploads\//, "")}`
-        : undefined,
-  }));
+  const mediaWithUrls = media.map((m: any) => {
+    // Normalize Windows path separators to web-safe forward slashes.
+    const normalizedPath = String(m.storage_path).replace(/\\/g, "/");
+    return {
+      id: m.id,
+      storage_path: m.storage_path,
+      media_type: m.media_type,
+      is_original: m.is_original,
+      signed_url: !m.is_original && normalizedPath.startsWith("http")
+        ? normalizedPath
+        : !m.is_original
+          ? `/uploads/${normalizedPath.replace(/^\/uploads\//, "")}`
+          : undefined,
+    };
+  });
 
   const ai = assessments[0];
   const band = priorityBand(report.priority_score);
@@ -226,10 +230,10 @@ export default async function IncidentDetail({
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Suspense fallback={<div className="animate-pulse h-48 bg-navy-100 rounded-2xl" />}>
-          <AssignDropdown reportId={report.id} teamMembers={teamMembers} currentAssignment={assignment} onAssigned={() => {}} />
+          <AssignDropdown reportId={report.id} teamMembers={teamMembers} currentAssignment={assignment} />
         </Suspense>
         <Suspense fallback={<div className="animate-pulse h-48 bg-navy-100 rounded-2xl" />}>
-          <NotesSection reportId={report.id} notes={notes} onNoteAdded={() => {}} />
+          <NotesSection reportId={report.id} notes={notes} />
         </Suspense>
       </div>
     </div>

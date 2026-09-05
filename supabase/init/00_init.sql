@@ -99,6 +99,14 @@ CREATE INDEX IF NOT EXISTS reports_operational_idx ON public.reports (operationa
 CREATE INDEX IF NOT EXISTS reports_priority_idx ON public.reports (priority_score);
 CREATE INDEX IF NOT EXISTS reports_location_idx ON public.reports USING GIST (location);
 
+-- Partial indexes for commonly filtered subsets (5-20x smaller, faster queries)
+CREATE INDEX IF NOT EXISTS reports_needs_review_idx ON public.reports (submitted_at)
+  WHERE verification_status = 'needs_review';
+CREATE INDEX IF NOT EXISTS reports_critical_idx ON public.reports (submitted_at)
+  WHERE final_severity = 'critical';
+CREATE INDEX IF NOT EXISTS reports_active_idx ON public.reports (priority_score DESC)
+  WHERE operational_status IN ('new', 'in_progress');
+
 -- ----------------------------------------------------------------------------
 -- report_media
 -- ----------------------------------------------------------------------------
@@ -158,6 +166,7 @@ CREATE TABLE IF NOT EXISTS public.verification_events (
 );
 
 CREATE INDEX IF NOT EXISTS verification_events_report_idx ON public.verification_events (report_id);
+CREATE INDEX IF NOT EXISTS verification_events_reviewer_idx ON public.verification_events (reviewer_id);
 
 -- ----------------------------------------------------------------------------
 -- report_tags
@@ -185,6 +194,8 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
 
 CREATE INDEX IF NOT EXISTS audit_logs_actor_idx ON public.audit_logs (actor_id);
 CREATE INDEX IF NOT EXISTS audit_logs_created_idx ON public.audit_logs (created_at);
+CREATE INDEX IF NOT EXISTS audit_logs_action_idx ON public.audit_logs (action);
+CREATE INDEX IF NOT EXISTS audit_logs_resource_idx ON public.audit_logs (resource_type, resource_id);
 
 -- ----------------------------------------------------------------------------
 -- Helper functions

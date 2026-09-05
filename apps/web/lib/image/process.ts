@@ -233,5 +233,9 @@ export async function cleanupReportUploads(userId: string, reportId: string): Pr
 }
 
 export function getPublicUrl(storagePath: string): string {
-  return `/uploads/${storagePath}`;
+  // storagePath is relative to the public dir (e.g. "uploads/<userId>/<reportId>/file.jpg").
+  // Normalize Windows separators and strip the redundant leading "uploads/" so the
+  // returned URL maps directly to public/uploads/<...>.
+  const normalized = storagePath.replace(/\\/g, "/");
+  return `/uploads/${normalized.replace(/^uploads\//, "")}`;
 }

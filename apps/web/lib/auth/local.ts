@@ -187,7 +187,18 @@ CREATE INDEX IF NOT EXISTS password_reset_tokens_user_id_idx ON public.password_
 CREATE INDEX IF NOT EXISTS password_reset_tokens_token_idx ON public.password_reset_tokens (token);
 `;
 
+async function tableExists(tableName: string): Promise<boolean> {
+  const result = await query(
+    `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1`,
+    [tableName]
+  );
+  return result.rows.length > 0;
+}
+
 export async function ensurePasswordResetTable(): Promise<void> {
+  // Skip when the table already exists: pg-mem cannot re-parse the
+  // FK-annotated CREATE TABLE over an existing table (AST coverage limit).
+  if (await tableExists("password_reset_tokens")) return;
   await query(CREATE_PASSWORD_RESET_TABLE);
 }
 
@@ -274,6 +285,8 @@ CREATE INDEX IF NOT EXISTS email_verification_tokens_token_idx ON public.email_v
 `;
 
 export async function ensureEmailVerificationTable(): Promise<void> {
+  // Skip when the table already exists (see ensurePasswordResetTable note).
+  if (await tableExists("email_verification_tokens")) return;
   await query(CREATE_EMAIL_VERIFICATION_TABLE);
 }
 

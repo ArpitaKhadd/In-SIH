@@ -32,7 +32,7 @@ export function AssignDropdown({
   reportId: string;
   teamMembers: TeamMember[];
   currentAssignment: Assignment | null;
-  onAssigned: () => void;
+  onAssigned?: () => void;
 }) {
   const [selectedAssignee, setSelectedAssignee] = useState(currentAssignment?.assignee_id || "");
   const [busy, setBusy] = useState(false);
@@ -47,7 +47,7 @@ export function AssignDropdown({
         body: JSON.stringify({ assigneeId: selectedAssignee }),
       });
       if (res.ok) {
-        onAssigned();
+        onAssigned?.();
       }
     } catch (error) {
       console.error("Assign failed:", error);
@@ -96,7 +96,7 @@ export function AssignDropdown({
   );
 }
 
-export function NotesSection({ reportId, notes, onNoteAdded }: { reportId: string; notes: Note[]; onNoteAdded: () => void }) {
+export function NotesSection({ reportId, notes, onNoteAdded }: { reportId: string; notes: Note[]; onNoteAdded?: () => void }) {
   const [newNote, setNewNote] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -111,7 +111,7 @@ export function NotesSection({ reportId, notes, onNoteAdded }: { reportId: strin
       });
       if (res.ok) {
         setNewNote("");
-        onNoteAdded();
+        onNoteAdded?.();
       }
     } catch (error) {
       console.error("Add note failed:", error);

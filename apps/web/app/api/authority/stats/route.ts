@@ -1,9 +1,20 @@
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateApiRequest, requireAuthorityRole } from "@/lib/api-auth";
 import { query } from '@/lib/db/local';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const authUser = await authenticateApiRequest(request);
+    if (!authUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!requireAuthorityRole(authUser)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const result = await query<{
       id: string;
       disaster_type: string;

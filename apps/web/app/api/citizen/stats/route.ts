@@ -1,15 +1,16 @@
-import { headers } from 'next/headers';
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateApiRequest } from "@/lib/api-auth";
 import { query } from '@/lib/db/local';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const headersList = headers();
-  const userId = headersList.get('x-user-id');
-
-  if (!userId) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+export async function GET(request: NextRequest) {
+  const authUser = await authenticateApiRequest(request);
+  if (!authUser) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const userId = authUser.userId;
 
   try {
     const result = await query<{

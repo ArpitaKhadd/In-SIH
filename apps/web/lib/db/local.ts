@@ -3,10 +3,23 @@ import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 // In-memory PostgreSQL adapter using pg-mem
 // Falls back to real PostgreSQL if DATABASE_URL is set and connects successfully
 
-let pool: Pool | null = null;
-let memDb: any = null;
-let isMemMode = false;
-let poolInitialization: Promise<Pool> | null = null;
+// Next.js dev mode bundles each route/action into its own module graph, so a
+// plain module-level variable would give every route a *separate* pg-mem DB.
+// Attach the pool state to globalThis so all bundles in the process share one DB.
+interface DbState {
+  pool: Pool | null;
+  memDb: any;
+  isMemMode: boolean;
+  poolInitialization: Promise<Pool> | null;
+}
+
+const globalForDb = globalThis as unknown as { __drm04DbState?: DbState };
+const dbState: DbState = (globalForDb.__drm04DbState ??= {
+  pool: null,
+  memDb: null,
+  isMemMode: false,
+  poolInitialization: null,
+});
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS public.users (
@@ -154,17 +167,17 @@ CREATE TABLE IF NOT EXISTS public.report_notes (
 
 async function initMemDb() {
   const { newDb, DataType } = await import('pg-mem');
-  memDb = newDb();
+  dbState.memDb = newDb();
   
   // Register uuid generation
-  memDb.public.registerFunction({
+  dbState.memDb.public.registerFunction({
     name: 'gen_random_uuid',
     returns: DataType.uuid,
     implementation: () => crypto.randomUUID(),
     impure: true,
   });
   
-  memDb.public.registerFunction({
+  dbState.memDb.public.registerFunction({
     name: 'uuid_generate_v4',
     returns: DataType.uuid,
     implementation: () => crypto.randomUUID(),
@@ -172,12 +185,12 @@ async function initMemDb() {
   });
   
   // Run schema
-  memDb.public.none(SCHEMA_SQL);
+  dbState.memDb.public.none(SCHEMA_SQL);
   
   // Create pg adapter for pg-mem
-  const { Pool: MemPool } = memDb.adapters.createPg() as any;
-  pool = new MemPool();
-  isMemMode = true;
+  const { Pool: MemPool } = dbState.memDb.adapters.createPg() as any;
+  dbState.pool = new MemPool();
+  dbState.isMemMode = true;
   
   console.log('[db] Initialized in-memory PostgreSQL (pg-mem)');
   
@@ -234,13 +247,13 @@ async function seedDemoData() {
   ];
 
   for (const u of users) {
-    await pool!.query(
+    await dbState.pool!.query(
       `INSERT INTO users (id, email, password_hash, email_verified, created_at, updated_at)
        VALUES ($1, $2, $3, true, NOW(), NOW())
        ON CONFLICT (email) DO NOTHING`,
       [u.id, u.email, defaultHash]
     );
-    await pool!.query(
+    await dbState.pool!.query(
       `INSERT INTO profiles (user_id, email, display_name, role, organization, status, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, 'active', NOW(), NOW())
        ON CONFLICT (user_id) DO NOTHING`,
@@ -258,7 +271,7 @@ async function seedDemoData() {
   ];
 
   for (const j of jurisdictions) {
-    await pool!.query(
+    await dbState.pool!.query(
       `INSERT INTO jurisdictions (id, name, type, created_at)
        VALUES ($1, $2, $3, NOW())
        ON CONFLICT (id) DO NOTHING`,
@@ -481,7 +494,7 @@ async function seedDemoData() {
   ];
 
   for (const inc of sampleIncidents) {
-    await pool!.query(
+    await dbState.pool!.query(
       `INSERT INTO reports (
         id, reporter_id, disaster_type, asset_type, description,
         observed_severity, ai_severity, ai_confidence, final_severity,
@@ -500,7 +513,7 @@ async function seedDemoData() {
     );
 
     // AI Assessment
-    await pool!.query(
+    await dbState.pool!.query(
       `INSERT INTO ai_assessments (
         report_id, provider, model_name, model_version,
         predicted_category, predicted_severity, confidence, indicators, explanation, status, processing_time_ms, created_at
@@ -513,7 +526,7 @@ async function seedDemoData() {
     );
 
     // Report Media (both original and privacy-redacted derivative)
-    await pool!.query(
+    await dbState.pool!.query(
       `INSERT INTO report_media (
         report_id, storage_path, media_type, file_size, sha256, perceptual_hash, privacy_processed, privacy_status, is_original, created_at
       ) VALUES
@@ -524,7 +537,7 @@ async function seedDemoData() {
 
     // Sample verification event if verified
     if (inc.verification_status === 'verified' || inc.verification_status === 'escalated') {
-      await pool!.query(
+      await dbState.pool!.query(
         `INSERT INTO verification_events (
           report_id, reviewer_id, previous_severity, new_severity, previous_status, new_status, reason, notes, created_at
         ) VALUES ($1, $2, $3, $4, 'needs_review', $5, 'Operational review confirmed damage indicators', 'NDRF rapid dispatch alerted.', NOW() - INTERVAL '1 hour')`,
@@ -533,14 +546,14 @@ async function seedDemoData() {
     }
 
     // Add sample notes
-    await pool!.query(
+    await dbState.pool!.query(
       `INSERT INTO report_notes (report_id, author_id, content, created_at)
        VALUES ($1, $2, 'Initial triage completed. High priority response initiated.', NOW() - INTERVAL '90 minutes')`,
       [inc.id, users[1].id]
     );
 
     // Add assignment
-    await pool!.query(
+    await dbState.pool!.query(
       `INSERT INTO report_assignments (report_id, assignee_id, assigned_by, assigned_at)
        VALUES ($1, $2, $3, NOW() - INTERVAL '90 minutes')
        ON CONFLICT (report_id) DO NOTHING`,
@@ -548,7 +561,7 @@ async function seedDemoData() {
     );
 
     // Audit log for report creation
-    await pool!.query(
+    await dbState.pool!.query(
       `INSERT INTO audit_logs (actor_id, action, resource_type, resource_id, metadata, created_at)
        VALUES ($1, 'report_created', 'report', $2, $3, NOW() - INTERVAL '2 hours')`,
       [inc.reporter_id, inc.id, JSON.stringify({ disaster: inc.disaster_type, severity: inc.final_severity })]
@@ -564,10 +577,10 @@ async function seedDemoData() {
 }
 
 export async function getPool(): Promise<Pool> {
-  if (pool) return pool;
-  if (poolInitialization) return poolInitialization;
+  if (dbState.pool) return dbState.pool;
+  if (dbState.poolInitialization) return dbState.poolInitialization;
 
-  poolInitialization = (async () => {
+  dbState.poolInitialization = (async () => {
     const dbUrl = process.env.DATABASE_URL;
 
     if (dbUrl && !dbUrl.includes('pg-mem') && !dbUrl.includes('memory')) {
@@ -583,10 +596,10 @@ export async function getPool(): Promise<Pool> {
         await client.query('SELECT 1');
         client.release();
 
-        pool = realPool;
-        isMemMode = false;
+        dbState.pool = realPool;
+        dbState.isMemMode = false;
         console.log('[db] Connected to real PostgreSQL');
-        return pool;
+        return dbState.pool;
       } catch (err) {
         if (process.env.NODE_ENV === "production" || process.env.ALLOW_IN_MEMORY_DB !== "true") {
           throw new Error("Database connection failed. Configure DATABASE_URL before running the application.");
@@ -600,13 +613,13 @@ export async function getPool(): Promise<Pool> {
     }
 
     await initMemDb();
-    return pool!;
+    return dbState.pool!;
   })();
 
   try {
-    return await poolInitialization;
+    return await dbState.poolInitialization;
   } finally {
-    poolInitialization = null;
+    dbState.poolInitialization = null;
   }
 }
 
@@ -654,15 +667,15 @@ export async function setCurrentUser(client: PoolClient, userId: string): Promis
 }
 
 export async function closePool(): Promise<void> {
-  if (pool) {
-    await pool.end();
-    pool = null;
-    poolInitialization = null;
+  if (dbState.pool) {
+    await dbState.pool.end();
+    dbState.pool = null;
+    dbState.poolInitialization = null;
   }
 }
 
 export function isInMemoryMode(): boolean {
-  return isMemMode;
+  return dbState.isMemMode;
 }
 
 export interface DbReport {

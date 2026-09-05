@@ -88,6 +88,14 @@ create index if not exists reports_operational_idx on public.reports (operationa
 create index if not exists reports_priority_idx on public.reports (priority_score);
 create index if not exists reports_location_idx on public.reports using gist (location);
 
+-- Partial indexes for commonly filtered subsets (5-20x smaller, faster queries)
+create index if not exists reports_needs_review_idx on public.reports (submitted_at)
+  where verification_status = 'needs_review';
+create index if not exists reports_critical_idx on public.reports (submitted_at)
+  where final_severity = 'critical';
+create index if not exists reports_active_idx on public.reports (priority_score desc)
+  where operational_status in ('new', 'in_progress');
+
 -- ----------------------------------------------------------------------------
 -- report_media
 -- ----------------------------------------------------------------------------
@@ -147,6 +155,7 @@ create table if not exists public.verification_events (
 );
 
 create index if not exists verification_events_report_idx on public.verification_events (report_id);
+create index if not exists verification_events_reviewer_idx on public.verification_events (reviewer_id);
 
 -- ----------------------------------------------------------------------------
 -- report_tags (loose tagging / duplicate clustering)
@@ -174,6 +183,8 @@ create table if not exists public.audit_logs (
 
 create index if not exists audit_logs_actor_idx on public.audit_logs (actor_id);
 create index if not exists audit_logs_created_idx on public.audit_logs (created_at);
+create index if not exists audit_logs_action_idx on public.audit_logs (action);
+create index if not exists audit_logs_resource_idx on public.audit_logs (resource_type, resource_id);
 
 -- ----------------------------------------------------------------------------
 -- Helper functions for RLS
