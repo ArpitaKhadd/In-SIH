@@ -29,7 +29,7 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.39.0",
-    "maplibre-gl": "^4.7.1",
+    "maplibre-gl": "^6.6.0",
     "next": "^14.2.33",
     "pg": "^8.23.0",
     "pg-mem": "^3.0.14",
